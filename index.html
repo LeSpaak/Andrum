@@ -1,0 +1,568 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="theme-color" content="#192321" />
+  <meta name="description" content="A minimal breathing timer with customizable breathing phases, cycle tracking, and gentle chimes." />
+  <title>Andrum – Breathing Timer</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      --bg: #192321;
+      --surface: #202c28;
+      --surface-raised: #283630;
+      --line: #3a4a42;
+      --text: #f1f0e7;
+      --muted: #acb7ad;
+      --mint: #a2cdb5;
+      --accent: #d6e7cb;
+      --in: #a5cbb4;
+      --hold-in: #d4ca9c;
+      --out: #a7b9d9;
+      --hold-out: #c0a8bb;
+      font-family: ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+    * { box-sizing: border-box; }
+    body { min-height: 100vh; margin: 0; color: var(--text); background: radial-gradient(ellipse at 46% 19%, #26382f 0%, var(--bg) 56%); }
+    button, input { font: inherit; }
+    button { cursor: pointer; }
+    button:focus-visible, input:focus-visible { outline: 2px solid var(--mint); outline-offset: 4px; }
+    button:disabled, input:disabled { cursor: not-allowed; opacity: .52; }
+    .page { width: min(1100px, calc(100% - 44px)); margin: 0 auto; }
+    header { padding: 31px 0 12px; display: flex; align-items: center; justify-content: space-between; gap: 16px; }
+    .brand { display:flex; align-items:center; gap: 11px; color: var(--text); font-size: 18px; font-weight: 650; letter-spacing:.015em; }
+    .brand-mark { width: 24px; height: 24px; border: 2px solid var(--mint); border-radius: 50%; position:relative; }
+    .brand-mark:after { content:""; width: 12px; height:12px; border: 2px solid var(--mint); border-radius:50%; position:absolute; top:4px; left:4px; }
+    .subtitle { color: var(--muted); font-size: 13px; letter-spacing:.05em; }
+    main { display:grid; grid-template-columns: minmax(0, 1.35fr) minmax(310px, .85fr); gap: 32px; padding: 28px 0 46px; align-items:stretch; }
+    .stage, .panel { border: 1px solid var(--line); border-radius: 24px; background: rgba(30, 41, 36, .8); box-shadow: 0 20px 60px rgba(0,0,0,.10); }
+    .stage { padding: 29px 20px 31px; text-align:center; display:flex; flex-direction:column; align-items:center; }
+    .eyebrow { margin: 2px 0 6px; font-size: 11px; font-weight: 700; letter-spacing: .18em; color: var(--mint); text-transform: uppercase; }
+    h1 { font-size: clamp(26px, 3vw, 36px); line-height: 1.15; letter-spacing:-.03em; font-weight: 580; margin: 0; }
+    .hint { margin: 10px 0 6px; color:var(--muted); font-size: 14px; line-height:1.5; }
+    .dial { position:relative; width: min(100%, 390px); aspect-ratio:1; margin: 10px auto 2px; }
+    .dial svg { width:100%; height:100%; overflow:visible; filter: drop-shadow(0 4px 15px rgba(0,0,0,.05)); }
+    .track { fill:none; stroke:rgba(219,240,224,.09); stroke-width:13; }
+    .segment { fill:none; stroke-width:13; stroke-linecap:butt; transition:opacity .2s; }
+    .progress { fill:none; stroke:var(--text); stroke-width:3; stroke-linecap:round; opacity:.9; }
+    .pointer-halo { fill:var(--mint); opacity:.16; }
+    .pointer { fill:var(--text); }
+    .dial-content { position:absolute; inset:0; display:flex; flex-direction:column; align-items:center; justify-content:center; pointer-events:none; }
+    .phase { font-size: clamp(20px, 3vw, 26px); font-weight: 500; color:var(--muted); margin-top: 20px; }
+    .seconds { font-size: clamp(74px, 10vw, 104px); font-variant-numeric:tabular-nums; font-weight: 330; letter-spacing:-.075em; line-height:1.05; margin-left:-8px; }
+    .seconds-unit { font-size: 15px; color:var(--muted); margin-top: 4px; }
+    .nostril-cue { margin-top: 15px; padding: 5px 12px; border:1px solid #4b6658; background:#273e32; border-radius: 30px; font-size:12px; font-weight:600; letter-spacing:.01em; color:#dceadd; text-align:center; }
+    .nostril-cue[hidden] { display:none; }
+    .status { font-size:13px; color:var(--muted); min-height:20px; }
+    .stats { width:min(100%, 375px); display:grid; grid-template-columns:1fr 1fr; margin: 11px 0 23px; border-top:1px solid var(--line); border-bottom:1px solid var(--line); }
+    .stat { padding:18px 4px; }
+    .stat + .stat { border-left: 1px solid var(--line); }
+    .stat-label { font-size: 12px; color:var(--muted); margin-bottom:6px; }
+    .stat-value { font-size:25px; letter-spacing:-.02em; font-variant-numeric: tabular-nums; font-weight:530; }
+    .actions { display:flex; gap: 11px; justify-content:center; width:100%; }
+    .button { border-radius: 12px; border:1px solid var(--line); padding: 13px 22px; min-width:127px; font-weight:600; transition:background .15s, transform .1s; }
+    .button:active { transform:translateY(1px); }
+    .primary { background:var(--mint); color:#14261c; border-color:var(--mint); }
+    .primary:hover { background:#badbc8; }
+    .secondary { background:transparent; color:var(--text); }
+    .secondary:hover { background:var(--surface-raised); }
+    .panel { padding:30px 30px 31px; }
+    .panel h2 { font-size:22px; font-weight: 600; letter-spacing:-.02em; margin:0 0 7px; }
+    .panel .intro { color:var(--muted); font-size:14px; line-height:1.55; margin:0 0 28px; }
+    .section-label { margin:0 0 14px; color:var(--text); font-size:14px; font-weight:600; }
+    .phase-inputs { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:13px; }
+    .phase-input { background:rgba(0,0,0,.11); border:1px solid var(--line); border-radius:12px; padding:14px 13px 13px; }
+    .phase-input[hidden], .preset-note[hidden] { display: none; }
+    .preset-note { color:var(--muted); font-size:12px; line-height:1.5; margin:12px 0 0; }
+    .phase-input label { display:flex; align-items:center; gap:7px; color:var(--muted); font-size:12px; margin-bottom: 11px; white-space:nowrap; }
+    .dot { width:8px; height:8px; border-radius:50%; background:var(--phase-color); display:inline-block; flex:0 0 8px; }
+    .input-row { display:flex; align-items:center; gap:8px; }
+    .input-row input { background:none; border:none; border-bottom:1px solid #65776b; border-radius:0; color:var(--text); width:100%; min-width:0; font-size:27px; font-variant-numeric: tabular-nums; line-height:1.3; padding:0 0 4px; outline-offset:0; }
+    .input-row input:focus { border-bottom-color:var(--mint); outline:none; }
+    .unit { font-size:12px; color:var(--muted); }
+    .divider { height:1px; background:var(--line); margin:27px 0; }
+    .preset-row { display:flex; gap:8px; flex-wrap:wrap; }
+    .preset { background:transparent; border:1px solid #55675d; border-radius:999px; color:#d1d9ce; padding:9px 13px; font-size:12px; transition:background .15s; }
+    .preset:hover:not(:disabled) { background:var(--surface-raised); }
+    .preset.selected { border-color:var(--mint); color:var(--text); background:#31483b; }
+    .switch-row { display:flex; justify-content:space-between; align-items:center; gap:12px; }
+    .switch-text { font-size:14px; font-weight:550; }
+    .switch-explain { font-size:12px; color:var(--muted); margin-top:5px; line-height:1.4; }
+    .toggle { position:relative; display:inline-flex; align-items:center; cursor:pointer; }
+    .toggle input { position:absolute; opacity:0; width:1px; height:1px; }
+    .toggle-track { width:45px; height:26px; border-radius:30px; background:#57675b; border:1px solid #667769; position:relative; transition: background .15s; }
+    .toggle-track:after { content:""; position:absolute; left:3px; top:3px; width:18px; height:18px; border-radius:50%; background:#e9efe8; transition:transform .15s; }
+    .toggle input:checked + .toggle-track { background:#69977c; }
+    .toggle input:checked + .toggle-track:after { transform:translateX(19px); }
+    .toggle input:focus-visible + .toggle-track { outline:2px solid var(--mint); outline-offset:4px; }
+    .info { font-size:12px; color:var(--muted); line-height:1.5; margin:20px 0 0; }
+    footer { padding:0 0 24px; color:#7d9588; text-align:center; font-size:12px; }
+    @media(max-width:760px) {
+      .page { width:min(100% - 26px, 520px); }
+      header { padding:20px 4px 5px; }
+      .subtitle { display:none; }
+      main { grid-template-columns:1fr; gap:14px; padding-top:14px; }
+      .stage { padding:25px 13px 25px; }
+      .dial { width:min(100%,330px); }
+      .panel { padding:25px 20px; }
+      .phase-input label { font-size:11px; }
+    }
+    @media(prefers-reduced-motion:reduce) { *, *:before, *:after { animation:none !important; transition:none !important; } }
+  </style>
+</head>
+<body>
+<div class="page">
+  <header>
+    <div class="brand"><span class="brand-mark" aria-hidden="true"></span>Andrum</div>
+    <div class="subtitle">ONE BREATH AT A TIME</div>
+  </header>
+
+  <main>
+    <section class="stage" aria-label="Breathing timer">
+      <p class="eyebrow">Breathing timer</p>
+      <h1>Find your rhythm.</h1>
+      <p class="hint">Follow the circle. Breathe at your own pace.</p>
+      <div class="dial">
+        <svg viewBox="0 0 360 360" role="img" aria-label="Circular progress through the breathing cycle">
+          <circle class="track" cx="180" cy="180" r="143"></circle>
+          <g id="segments"></g>
+          <circle id="progress" class="progress" cx="180" cy="180" r="143" transform="rotate(-90 180 180)"></circle>
+          <circle id="pointerHalo" class="pointer-halo" cx="180" cy="37" r="14"></circle>
+          <circle id="pointer" class="pointer" cx="180" cy="37" r="5"></circle>
+        </svg>
+        <div class="dial-content">
+          <div id="phaseName" class="phase">Inhale</div>
+          <div id="remaining" class="seconds">4.0</div>
+          <div class="seconds-unit">seconds remaining</div>
+          <div id="nostrilCue" class="nostril-cue" hidden></div>
+        </div>
+      </div>
+      <div id="status" class="status" aria-live="polite">Ready to begin</div>
+      <div class="stats">
+        <div class="stat">
+          <div class="stat-label">Completed cycles</div>
+          <div class="stat-value" id="cycleCount">0</div>
+        </div>
+        <div class="stat">
+          <div class="stat-label">Active time</div>
+          <div class="stat-value" id="elapsed">00:00</div>
+        </div>
+      </div>
+      <div class="actions">
+        <button type="button" id="startPause" class="button primary">Start</button>
+        <button type="button" id="reset" class="button secondary">Reset</button>
+      </div>
+    </section>
+
+    <aside class="panel" aria-label="Settings">
+      <h2>Your breathing</h2>
+      <p class="intro">Set the duration of each phase. Set a hold to 0 to skip it.</p>
+
+      <div class="section-label">Seconds per phase</div>
+      <div class="phase-inputs">
+        <div class="phase-input" style="--phase-color:var(--in)">
+          <label for="inhale"><span class="dot"></span>Inhale</label>
+          <div class="input-row"><input id="inhale" type="number" min="0.5" max="600" step="0.5" value="4" inputmode="decimal" aria-label="Inhale duration in seconds"><span class="unit">sec</span></div>
+        </div>
+        <div class="phase-input" id="topUpField" style="--phase-color:var(--in)" hidden>
+          <label for="topUp"><span class="dot"></span>Second inhale</label>
+          <div class="input-row"><input id="topUp" type="number" min="0.5" max="600" step="0.5" value="1" inputmode="decimal" aria-label="Second inhale duration in seconds for physiological sigh"><span class="unit">sec</span></div>
+        </div>
+        <div class="phase-input" style="--phase-color:var(--hold-in)">
+          <label for="holdIn"><span class="dot"></span>Hold after inhale</label>
+          <div class="input-row"><input id="holdIn" type="number" min="0" max="600" step="0.5" value="2" inputmode="decimal" aria-label="Hold after inhale in seconds"><span class="unit">sec</span></div>
+        </div>
+        <div class="phase-input" style="--phase-color:var(--out)">
+          <label for="exhale"><span class="dot"></span>Exhale</label>
+          <div class="input-row"><input id="exhale" type="number" min="0.5" max="600" step="0.5" value="6" inputmode="decimal" aria-label="Exhale duration in seconds"><span class="unit">sec</span></div>
+        </div>
+        <div class="phase-input" style="--phase-color:var(--hold-out)">
+          <label for="holdOut"><span class="dot"></span>Hold after exhale</label>
+          <div class="input-row"><input id="holdOut" type="number" min="0" max="600" step="0.5" value="0" inputmode="decimal" aria-label="Hold after exhale in seconds"><span class="unit">sec</span></div>
+        </div>
+      </div>
+
+      <div class="divider"></div>
+      <div class="section-label">Presets</div>
+      <div class="preset-row">
+        <button type="button" class="preset" data-values="4,7,8,0">4–7–8</button>
+        <button type="button" class="preset" data-values="4,4,6,2">4–4–6–2</button>
+        <button type="button" class="preset" data-values="5.5,0,5.5,0">Coherent 5.5–5.5</button>
+        <button type="button" class="preset" data-mode="sigh" data-values="2.5,0,6,0" data-topup="1">Physiological sigh</button>
+        <button type="button" class="preset" data-mode="alternate" data-values="5.5,0,5.5,0">Alternate nostrils</button>
+        <button type="button" class="preset" data-mode="buteyko" data-values="3,0,4,2">Buteyko · gentle</button>
+      </div>
+      <p class="preset-note" id="presetNote" hidden></p>
+
+      <div class="divider"></div>
+      <div class="switch-row">
+        <div>
+          <div class="switch-text">Chime at each phase change</div>
+          <div class="switch-explain">A gentle chime after every phase, including the end of a cycle.</div>
+        </div>
+        <label class="toggle" aria-label="Toggle chime at each phase change">
+          <input type="checkbox" id="sound" checked />
+          <span class="toggle-track" aria-hidden="true"></span>
+        </label>
+      </div>
+      <p class="info">Only active time is counted. Pausing stops the timer and cycle counter. To change timings, reset first.</p>
+    </aside>
+  </main>
+  <footer>Andrum · Runs locally in your browser · No account required</footer>
+</div>
+<script>
+(() => {
+  'use strict';
+  const colors = {
+    inhale: '#a5cbb4',
+    topUp: '#90bfa7',
+    holdIn: '#d4ca9c',
+    exhale: '#a7b9d9',
+    holdOut: '#c0a8bb'
+  };
+  const labels = {
+    inhale: 'Inhale',
+    topUp: 'Inhale again',
+    holdIn: 'Hold after inhale',
+    exhale: 'Exhale',
+    holdOut: 'Hold after exhale'
+  };
+  const fields = {
+    inhale: document.getElementById('inhale'),
+    topUp: document.getElementById('topUp'),
+    holdIn: document.getElementById('holdIn'),
+    exhale: document.getElementById('exhale'),
+    holdOut: document.getElementById('holdOut')
+  };
+  const standardKeys = ['inhale', 'holdIn', 'exhale', 'holdOut'];
+  const presets = [...document.querySelectorAll('.preset')];
+  const segments = document.getElementById('segments');
+  const progress = document.getElementById('progress');
+  const pointer = document.getElementById('pointer');
+  const pointerHalo = document.getElementById('pointerHalo');
+  const phaseName = document.getElementById('phaseName');
+  const remaining = document.getElementById('remaining');
+  const cycleCount = document.getElementById('cycleCount');
+  const elapsed = document.getElementById('elapsed');
+  const startPause = document.getElementById('startPause');
+  const reset = document.getElementById('reset');
+  const sound = document.getElementById('sound');
+  const status = document.getElementById('status');
+  const topUpField = document.getElementById('topUpField');
+  const presetNote = document.getElementById('presetNote');
+  const nostrilCue = document.getElementById('nostrilCue');
+
+  const circumference = 2 * Math.PI * 143;
+  let durations = { inhale: 4, topUp: 1, holdIn: 2, exhale: 6, holdOut: 0 };
+  let mode = 'standard'; // standard, sigh, alternate, or buteyko
+  let phases = [];
+  let cycleSeconds = 12;
+  let running = false;
+  let locked = false;
+  let accumulatedMs = 0;
+  let lastStartedAt = 0;
+  let lastSignaledBoundary = 0;
+  let animationId = 0;
+  let boundaryTimeoutId = 0;
+  let audioContext = null;
+
+  function syncPresetSelection() {
+    const values = standardKeys.map(key => durations[key]).join(',');
+    presets.forEach(button => {
+      const presetMode = button.dataset.mode || 'standard';
+      const matches = values === button.dataset.values && mode === presetMode &&
+        (presetMode !== 'sigh' || durations.topUp === Number(button.dataset.topup));
+      button.classList.toggle('selected', matches);
+      button.setAttribute('aria-pressed', String(matches));
+    });
+  }
+
+  function renderSegments() {
+    segments.replaceChildren();
+    let start = 0;
+    phases.forEach((phase, index) => {
+      const fraction = phase.duration / cycleSeconds;
+      const arc = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+      arc.setAttribute('class', 'segment');
+      arc.setAttribute('cx', '180');
+      arc.setAttribute('cy', '180');
+      arc.setAttribute('r', '143');
+      arc.setAttribute('transform', 'rotate(-90 180 180)');
+      arc.setAttribute('stroke', colors[phase.key]);
+      const gap = Math.min(3.5, fraction * circumference * 0.16);
+      arc.setAttribute('stroke-dasharray', `${Math.max(0, fraction * circumference - gap)} ${circumference}`);
+      arc.setAttribute('stroke-dashoffset', `${-start * circumference}`);
+      arc.setAttribute('opacity', '0.7');
+      arc.dataset.phase = String(index);
+      segments.append(arc);
+      start += fraction;
+    });
+    syncPresetSelection();
+  }
+
+  function nostrilBreath(inSide, outSide) {
+    const nextSide = outSide.toLowerCase();
+    return [
+      { key: 'inhale', duration: durations.inhale, label: `Inhale · ${inSide} nostril`, cue: `Close ${inSide === 'Left' ? 'right' : 'left'} nostril` },
+      { key: 'holdIn', duration: durations.holdIn, label: 'Hold after inhale', cue: `Next: exhale through ${nextSide}` },
+      { key: 'exhale', duration: durations.exhale, label: `Exhale · ${outSide} nostril`, cue: `Close ${outSide === 'Left' ? 'right' : 'left'} nostril` },
+      { key: 'holdOut', duration: durations.holdOut, label: 'Hold after exhale', cue: `Next: inhale through ${nextSide}` }
+    ].filter(phase => phase.duration > 0);
+  }
+
+  function readInputs() {
+    Object.entries(fields).forEach(([key, input]) => {
+      const n = Number(input.value.replace(',', '.'));
+      const min = (key === 'inhale' || key === 'exhale' || key === 'topUp') ? 0.5 : 0;
+      durations[key] = (input.value.trim() !== '' && Number.isFinite(n))
+        ? Math.min(600, Math.max(min, n)) : durations[key];
+    });
+    if (mode === 'alternate') {
+      // A full alternate-nostril cycle has two breaths:
+      // in left → out right → in right → out left.
+      phases = [
+        ...nostrilBreath('Left', 'Right'),
+        ...nostrilBreath('Right', 'Left')
+      ];
+    } else {
+      const keys = mode === 'sigh' ? ['inhale', 'topUp', 'holdIn', 'exhale', 'holdOut'] : standardKeys;
+      phases = keys.filter(key => durations[key] > 0).map(key => ({
+        key,
+        duration: durations[key],
+        label: mode === 'buteyko'
+          ? ({ inhale: 'Soft inhale', holdIn: 'Gentle pause', exhale: 'Soft exhale', holdOut: 'Comfortable pause' }[key] || labels[key])
+          : labels[key],
+        cue: mode === 'buteyko'
+          ? (key === 'holdOut' || key === 'holdIn'
+              ? 'Pause only while comfortable'
+              : 'Small, quiet breaths through your nose')
+          : ''
+      }));
+    }
+    cycleSeconds = phases.reduce((sum, phase) => sum + phase.duration, 0);
+    topUpField.hidden = mode !== 'sigh';
+    presetNote.hidden = mode === 'standard';
+    presetNote.textContent = mode === 'sigh'
+      ? 'Physiological sigh: inhale, take a short second inhale, then exhale slowly. Adjust the suggested timings as you like.'
+      : mode === 'alternate'
+      ? 'Alternate nostrils: inhale left → exhale right → inhale right → exhale left. A full cycle is two breaths. Close the opposite nostril gently; the 5.5-second timings are a gentle starting point.'
+      : mode === 'buteyko'
+      ? 'Buteyko-inspired: breathe lightly and quietly through your nose, then take a short, comfortable pause after exhaling. This is a gentle timer, not a medical protocol. Never force breath holds or strong air hunger. Adjust the timings or stop if uncomfortable.'
+      : '';
+    renderSegments();
+    render(0);
+  }
+
+  function formatTime(ms) {
+    const fullSeconds = Math.floor(ms / 1000);
+    const hours = Math.floor(fullSeconds / 3600);
+    const minutes = Math.floor((fullSeconds % 3600) / 60);
+    const seconds = fullSeconds % 60;
+    const pad = n => String(n).padStart(2, '0');
+    return hours > 0 ? `${pad(hours)}:${pad(minutes)}:${pad(seconds)}` : `${pad(minutes)}:${pad(seconds)}`;
+  }
+
+  function render(ms) {
+    const totalSeconds = ms / 1000;
+    const cycles = Math.floor(totalSeconds / cycleSeconds);
+    const withinCycle = totalSeconds - cycles * cycleSeconds;
+    let position = 0;
+    let index = phases.length - 1;
+    for (let i = 0; i < phases.length; i++) {
+      if (withinCycle < position + phases[i].duration) {
+        index = i;
+        break;
+      }
+      position += phases[i].duration;
+    }
+    const phase = phases[index];
+    const secondsLeft = Math.max(0, phase.duration - (withinCycle - position));
+    const fraction = withinCycle / cycleSeconds;
+    const theta = fraction * Math.PI * 2;
+    const x = 180 + 143 * Math.sin(theta);
+    const y = 180 - 143 * Math.cos(theta);
+
+    phaseName.textContent = phase.label;
+    nostrilCue.hidden = !phase.cue;
+    nostrilCue.textContent = phase.cue;
+    phaseName.style.color = colors[phase.key];
+    remaining.textContent = secondsLeft.toFixed(1);
+    cycleCount.textContent = String(cycles);
+    elapsed.textContent = formatTime(ms);
+    progress.setAttribute('stroke-dasharray', `${Math.max(0, fraction * circumference)} ${circumference}`);
+    pointer.setAttribute('cx', x);
+    pointer.setAttribute('cy', y);
+    pointerHalo.setAttribute('cx', x);
+    pointerHalo.setAttribute('cy', y);
+    pointerHalo.setAttribute('fill', colors[phase.key]);
+    segments.querySelectorAll('.segment').forEach(arc => {
+      arc.setAttribute('opacity', Number(arc.dataset.phase) === index ? '1' : '0.42');
+    });
+  }
+
+  function getElapsedMs() {
+    return accumulatedMs + (running ? performance.now() - lastStartedAt : 0);
+  }
+
+  // Count phase boundaries, including the transition from the last phase to a new cycle.
+  // Durations of 0 are excluded, so they cannot cause phantom sounds.
+  function boundariesPassed(ms) {
+    const seconds = ms / 1000;
+    const completed = Math.floor(seconds / cycleSeconds);
+    const within = seconds - completed * cycleSeconds;
+    let passed = completed * phases.length;
+    let position = 0;
+    for (let i = 0; i < phases.length - 1; i++) {
+      position += phases[i].duration;
+      if (within >= position) passed++;
+    }
+    return passed;
+  }
+
+  function nextBoundaryDelay(ms) {
+    const within = (ms / 1000) % cycleSeconds;
+    let position = 0;
+    for (const phase of phases) {
+      position += phase.duration;
+      if (position > within + 0.000001) return (position - within) * 1000;
+    }
+    return (cycleSeconds - within) * 1000;
+  }
+
+  function chime() {
+    if (!sound.checked) return;
+    try {
+      const Context = window.AudioContext || window.webkitAudioContext;
+      if (!Context) return;
+      if (!audioContext) audioContext = new Context();
+      if (audioContext.state !== 'running') { audioContext.resume().catch(() => {}); return; }
+      const now = audioContext.currentTime;
+      const out = audioContext.createGain();
+      out.gain.setValueAtTime(0.0001, now);
+      out.gain.exponentialRampToValueAtTime(0.085, now + 0.015);
+      out.gain.exponentialRampToValueAtTime(0.0001, now + 0.8);
+      out.connect(audioContext.destination);
+      [660, 990].forEach((frequency, index) => {
+        const oscillator = audioContext.createOscillator();
+        const gain = audioContext.createGain();
+        oscillator.type = 'sine';
+        oscillator.frequency.value = frequency;
+        gain.gain.value = index === 0 ? 0.7 : 0.3;
+        oscillator.connect(gain);
+        gain.connect(out);
+        oscillator.start(now);
+        oscillator.stop(now + 0.82);
+        oscillator.onended = () => { oscillator.disconnect(); gain.disconnect(); };
+      });
+      setTimeout(() => out.disconnect(), 950);
+    } catch (_) { /* Browser audio support is optional. */ }
+  }
+
+  function signalTransitions() {
+    const passed = boundariesPassed(getElapsedMs());
+    // If the browser was asleep in the background, play only one sound, not a burst.
+    if (passed > lastSignaledBoundary) chime();
+    lastSignaledBoundary = passed;
+  }
+
+  // A phase-change timeout keeps audio cues working when the visual animation
+  // is throttled in a background tab. The animation uses the same counter to avoid duplicate bells.
+  function scheduleBoundary() {
+    clearTimeout(boundaryTimeoutId);
+    if (!running) return;
+    boundaryTimeoutId = setTimeout(() => {
+      if (!running) return;
+      signalTransitions();
+      scheduleBoundary();
+    }, Math.max(1, nextBoundaryDelay(getElapsedMs()) + 8));
+  }
+
+  function tick() {
+    if (!running) return;
+    render(getElapsedMs());
+    signalTransitions();
+    animationId = requestAnimationFrame(tick);
+  }
+
+  function setLocked(value) {
+    locked = value;
+    Object.values(fields).forEach(input => input.disabled = value);
+    presets.forEach(button => button.disabled = value);
+  }
+
+  function startOrPause() {
+    if (running) {
+      accumulatedMs = getElapsedMs();
+      running = false;
+      cancelAnimationFrame(animationId);
+      clearTimeout(boundaryTimeoutId);
+      render(accumulatedMs);
+      lastSignaledBoundary = boundariesPassed(accumulatedMs);
+      startPause.textContent = 'Resume';
+      status.textContent = 'Paused';
+      return;
+    }
+    // Start/resume audio during the user gesture, as required by browsers.
+    if (sound.checked) {
+      try {
+        const Context = window.AudioContext || window.webkitAudioContext;
+        if (Context) {
+          if (!audioContext) audioContext = new Context();
+          if (audioContext.state === 'suspended') audioContext.resume().catch(() => {});
+        }
+      } catch (_) {}
+    }
+    setLocked(true);
+    lastStartedAt = performance.now();
+    lastSignaledBoundary = boundariesPassed(accumulatedMs);
+    running = true;
+    startPause.textContent = 'Pause';
+    status.textContent = 'In progress';
+    scheduleBoundary();
+    animationId = requestAnimationFrame(tick);
+  }
+
+  function resetTimer() {
+    running = false;
+    cancelAnimationFrame(animationId);
+    clearTimeout(boundaryTimeoutId);
+    accumulatedMs = 0;
+    lastSignaledBoundary = 0;
+    setLocked(false);
+    startPause.textContent = 'Start';
+    status.textContent = 'Ready to begin';
+    readInputs();
+  }
+
+  Object.entries(fields).forEach(([key, input]) => {
+    input.addEventListener('input', () => {
+      if (!locked && input.value !== '' && Number.isFinite(Number(input.value))) readInputs();
+    });
+    input.addEventListener('change', () => {
+      if (locked) return;
+      readInputs();
+      input.value = String(durations[key]);
+    });
+  });
+  presets.forEach(button => button.addEventListener('click', () => {
+    if (locked) return;
+    mode = button.dataset.mode || 'standard';
+    button.dataset.values.split(',').forEach((value, index) => {
+      fields[standardKeys[index]].value = value;
+    });
+    if (mode === 'sigh') fields.topUp.value = button.dataset.topup || '1';
+    readInputs();
+  }));
+  startPause.addEventListener('click', startOrPause);
+  reset.addEventListener('click', resetTimer);
+  document.addEventListener('keydown', event => {
+    const tag = event.target.tagName;
+    if (tag === 'INPUT' || tag === 'BUTTON' || tag === 'TEXTAREA' || event.altKey || event.ctrlKey || event.metaKey) return;
+    if (event.code === 'Space') { event.preventDefault(); startOrPause(); }
+  });
+  readInputs();
+})();
+</script>
+</body>
+</html>
