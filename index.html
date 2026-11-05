@@ -180,7 +180,7 @@
           <label for="topUp"><span class="dot"></span>Second inhale</label>
           <div class="input-row"><input id="topUp" type="number" min="0.5" max="600" step="0.5" value="1" inputmode="decimal" aria-label="Second inhale duration in seconds for physiological sigh"><span class="unit">sec</span></div>
         </div>
-        <div class="phase-input" style="--phase-color:var(--hold-in)">
+        <div class="phase-input" id="holdInField" style="--phase-color:var(--hold-in)">
           <label for="holdIn"><span class="dot"></span>Hold after inhale</label>
           <div class="input-row"><input id="holdIn" type="number" min="0" max="600" step="0.5" value="2" inputmode="decimal" aria-label="Hold after inhale in seconds"><span class="unit">sec</span></div>
         </div>
@@ -191,6 +191,10 @@
         <div class="phase-input" style="--phase-color:var(--hold-out)">
           <label for="holdOut"><span class="dot"></span>Hold after exhale</label>
           <div class="input-row"><input id="holdOut" type="number" min="0" max="600" step="0.5" value="0" inputmode="decimal" aria-label="Hold after exhale in seconds"><span class="unit">sec</span></div>
+        </div>
+        <div class="phase-input" id="recoveryField" style="--phase-color:var(--mint)" hidden>
+          <label for="recovery"><span class="dot"></span>Normal breathing</label>
+          <div class="input-row"><input id="recovery" type="number" min="5" max="120" step="0.5" value="12" inputmode="decimal" aria-label="Normal nasal breathing recovery duration in seconds"><span class="unit">sec</span></div>
         </div>
       </div>
 
@@ -203,6 +207,7 @@
         <button type="button" class="preset" data-mode="sigh" data-values="2.5,0,6,0" data-topup="1">Physiological sigh</button>
         <button type="button" class="preset" data-mode="alternate" data-values="5.5,0,5.5,0">Alternate nostrils</button>
         <button type="button" class="preset" data-mode="buteyko" data-values="3,0,4,1">Buteyko · progressive</button>
+        <button type="button" class="preset" data-mode="smallHolds" data-values="3,0,3,4" data-recovery="12">Buteyko · small holds</button>
       </div>
       <p class="preset-note" id="presetNote" hidden></p>
 
@@ -230,7 +235,7 @@
       <p class="info">Only active time is counted. Pausing stops the timer and cycle counter. To change timings, reset first.</p>
     </aside>
   </main>
-  <footer>Andrum · Runs locally in your browser · No account required · v4</footer>
+  <footer>Andrum · Runs locally in your browser · No account required · v5</footer>
 </div>
 <script>
 (() => {
@@ -240,21 +245,24 @@
     topUp: '#90bfa7',
     holdIn: '#d4ca9c',
     exhale: '#a7b9d9',
-    holdOut: '#c0a8bb'
+    holdOut: '#c0a8bb',
+    recovery: '#a2cdb5'
   };
   const labels = {
     inhale: 'Inhale',
     topUp: 'Inhale again',
     holdIn: 'Hold after inhale',
     exhale: 'Exhale',
-    holdOut: 'Hold after exhale'
+    holdOut: 'Hold after exhale',
+    recovery: 'Breathe normally'
   };
   const fields = {
     inhale: document.getElementById('inhale'),
     topUp: document.getElementById('topUp'),
     holdIn: document.getElementById('holdIn'),
     exhale: document.getElementById('exhale'),
-    holdOut: document.getElementById('holdOut')
+    holdOut: document.getElementById('holdOut'),
+    recovery: document.getElementById('recovery')
   };
   const standardKeys = ['inhale', 'holdIn', 'exhale', 'holdOut'];
   const presets = [...document.querySelectorAll('.preset')];
@@ -275,12 +283,14 @@
   const audioFeedback = document.getElementById('audioFeedback');
   const status = document.getElementById('status');
   const topUpField = document.getElementById('topUpField');
+  const holdInField = document.getElementById('holdInField');
+  const recoveryField = document.getElementById('recoveryField');
   const presetNote = document.getElementById('presetNote');
   const nostrilCue = document.getElementById('nostrilCue');
 
   const circumference = 2 * Math.PI * 143;
-  let durations = { inhale: 4, topUp: 1, holdIn: 2, exhale: 6, holdOut: 0 };
-  let mode = 'standard'; // standard, sigh, alternate, or buteyko
+  let durations = { inhale: 4, topUp: 1, holdIn: 2, exhale: 6, holdOut: 0, recovery: 12 };
+  let mode = 'standard'; // standard, sigh, alternate, buteyko, or smallHolds
   let phases = [];
   let cycleSeconds = 12;
   let shownButeykoStage = -1;
@@ -298,7 +308,8 @@
     presets.forEach(button => {
       const presetMode = button.dataset.mode || 'standard';
       const matches = values === button.dataset.values && mode === presetMode &&
-        (presetMode !== 'sigh' || durations.topUp === Number(button.dataset.topup));
+        (presetMode !== 'sigh' || durations.topUp === Number(button.dataset.topup)) &&
+        (presetMode !== 'smallHolds' || durations.recovery === Number(button.dataset.recovery));
       button.classList.toggle('selected', matches);
       button.setAttribute('aria-pressed', String(matches));
     });
@@ -401,9 +412,10 @@
   function readInputs() {
     Object.entries(fields).forEach(([key, input]) => {
       const n = Number(input.value.replace(',', '.'));
-      const min = (key === 'inhale' || key === 'exhale' || key === 'topUp') ? 0.5 : 0;
+      const min = key === 'recovery' ? 5 : (key === 'inhale' || key === 'exhale' || key === 'topUp') ? 0.5 : 0;
+      const max = key === 'recovery' ? 120 : (key === 'holdOut' && mode === 'smallHolds') ? 5 : 600;
       durations[key] = (input.value.trim() !== '' && Number.isFinite(n))
-        ? Math.min(600, Math.max(min, n)) : durations[key];
+        ? Math.min(max, Math.max(min, n)) : durations[key];
     });
     if (mode === 'alternate') {
       // A full alternate-nostril cycle has two breaths:
@@ -412,6 +424,15 @@
         ...nostrilBreath('Left', 'Right'),
         ...nostrilBreath('Right', 'Left')
       ];
+    } else if (mode === 'smallHolds') {
+      // Based on "Many Small Breath Holds": one normal nasal breath,
+      // a brief comfortable pause following exhalation, then unpaced recovery.
+      phases = [
+        { key: 'inhale', duration: durations.inhale, label: 'Normal inhale', cue: 'Breathe quietly through your nose' },
+        { key: 'exhale', duration: durations.exhale, label: 'Normal exhale', cue: 'Exhale gently; do not empty your lungs forcefully' },
+        ...(durations.holdOut > 0 ? [{ key: 'holdOut', duration: durations.holdOut, label: 'Short pause', cue: 'Pause comfortably after exhaling — never strain' }] : []),
+        { key: 'recovery', duration: durations.recovery, label: 'Breathe normally', cue: 'Breathe naturally through your nose; no need to count breaths' }
+      ];
     } else {
       const keys = mode === 'sigh' ? ['inhale', 'topUp', 'holdIn', 'exhale', 'holdOut'] : standardKeys;
       phases = keys.filter(key => durations[key] > 0).map(key => ({ key, duration: durations[key], label: labels[key], cue: '' }));
@@ -419,6 +440,9 @@
     cycleSeconds = phases.reduce((sum, phase) => sum + phase.duration, 0);
     shownButeykoStage = -1;
     topUpField.hidden = mode !== 'sigh';
+    holdInField.hidden = mode === 'smallHolds';
+    recoveryField.hidden = mode !== 'smallHolds';
+    fields.holdOut.max = mode === 'smallHolds' ? '5' : '600';
     presetNote.hidden = mode === 'standard';
     presetNote.textContent = mode === 'sigh'
       ? 'Physiological sigh: inhale, take a short second inhale, then exhale slowly. Adjust the suggested timings as you like.'
@@ -426,6 +450,8 @@
       ? 'Alternate nostrils: inhale left → exhale right → inhale right → exhale left. A full cycle is two breaths. Close the opposite nostril gently; the 5.5-second timings are a gentle starting point.'
       : mode === 'buteyko'
       ? 'Progressive Buteyko-inspired mode: 8 cycles at your initial rhythm, 8 cycles slightly slower, then a final comfortable rhythm. The rhythm slows gently and then stays steady. Keep breaths SMALL and quiet through your nose; this timer cannot measure breath volume. Do not force air hunger or prolonged breath-holding. Stop if dizzy or uncomfortable.'
+      : mode === 'smallHolds'
+      ? 'Many Small Breath Holds: breathe in and out gently through the nose, pause comfortably for 2–5 seconds after exhaling, then breathe normally for 10–15 seconds before repeating. The recovery interval is free-paced. This is a pacing aid, not a medical treatment. Never force a hold or try to increase it automatically; stop if dizzy or distressed.'
       : '';
     renderSegments();
     render(0);
@@ -629,6 +655,7 @@
       fields[standardKeys[index]].value = value;
     });
     if (mode === 'sigh') fields.topUp.value = button.dataset.topup || '1';
+    if (mode === 'smallHolds') fields.recovery.value = button.dataset.recovery || '12';
     readInputs();
   }));
   // Retain the chosen volume; 100% preserves the original chime level.
